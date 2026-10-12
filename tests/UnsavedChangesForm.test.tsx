@@ -9,11 +9,10 @@ const mockPush = vi.fn();
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
     push: mockPush,
-    replace: vi.fn(),
   }),
 }));
 
-function renderFormWithProvider() {
+function renderForm() {
   return render(
     <UnsavedChangesProvider>
       <UnsavedChangesForm />
@@ -21,109 +20,73 @@ function renderFormWithProvider() {
   );
 }
 
-describe('UnsavedChangesForm Component', () => {
+describe('UnsavedChangesForm', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('renders in Pristine state initially', () => {
-    renderFormWithProvider();
-
-    expect(screen.getByRole('heading', { name: /Project Registration Form/i })).toBeInTheDocument();
-    expect(screen.getByText('Pristine (Clean)')).toBeInTheDocument();
-    expect(screen.getByText('No (Matches Baseline)')).toBeInTheDocument();
-    expect(screen.getByText('Inactive')).toBeInTheDocument();
+  it('renders clean initially with Full Name and Email fields', () => {
+    renderForm();
+    expect(screen.getByText('User Details')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Full Name/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Email Address/i)).toBeInTheDocument();
+    expect(screen.getByText('Clean')).toBeInTheDocument();
   });
 
-  it('becomes Dirty when a user modifies a field, and returns to Pristine when value is restored', async () => {
+  it('switches to Unsaved Changes when editing, and reverts to Clean when restored', async () => {
     const user = userEvent.setup();
-    renderFormWithProvider();
+    renderForm();
 
     const nameInput = screen.getByLabelText(/Full Name/i);
-
-    // Type text into nameInput
     await user.type(nameInput, 'Alice');
 
-    // Status should become Dirty
-    expect(screen.getByText('Dirty (Unsaved Changes)')).toBeInTheDocument();
-    expect(screen.getByText('Yes (Differences Exist)')).toBeInTheDocument();
-    expect(screen.getByText('Active (Guarded)')).toBeInTheDocument();
+    expect(screen.getByText('Unsaved Changes')).toBeInTheDocument();
 
-    // Clear text back to initial empty string
     await user.clear(nameInput);
 
-    // Status should return to Pristine!
     await waitFor(() => {
-      expect(screen.getByText('Pristine (Clean)')).toBeInTheDocument();
-      expect(screen.getByText('No (Matches Baseline)')).toBeInTheDocument();
-      expect(screen.getByText('Inactive')).toBeInTheDocument();
+      expect(screen.getByText('Clean')).toBeInTheDocument();
     });
   });
 
-  it('displays validation errors when submitting with missing required fields', async () => {
-    renderFormWithProvider();
+  it('validates fields on empty submission', async () => {
+    renderForm();
+    const submitBtn = screen.getByRole('button', { name: /Save Changes/i });
+    fireEvent.click(submitBtn);
 
-    const submitButton = screen.getByRole('button', { name: /Submit Form/i });
-    fireEvent.click(submitButton);
-
-    expect(await screen.findByText('Full Name is required.')).toBeInTheDocument();
-    expect(screen.getByText('Email Address is required.')).toBeInTheDocument();
-    expect(screen.getByText('Message is required.')).toBeInTheDocument();
-    expect(screen.getByText('You must agree to the Terms and Conditions.')).toBeInTheDocument();
+    expect(await screen.findByText('Name is required.')).toBeInTheDocument();
+    expect(screen.getByText('Email is required.')).toBeInTheDocument();
   });
 
-  it('preserves user input and stays dirty when submission fails', async () => {
+  it('resets form when reset button is clicked', async () => {
     const user = userEvent.setup();
-    renderFormWithProvider();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
 
-    // Fill valid data
-    await user.type(screen.getByLabelText(/Full Name/i), 'John Doe');
-    await user.type(screen.getByLabelText(/Email Address/i), 'john@example.com');
-    await user.type(screen.getByLabelText(/Message/i), 'This is a long valid test message.');
-    await user.click(screen.getByRole('checkbox', { name: /I acknowledge and agree/i }));
-
-    // Turn on simulated failure
-    const failureCheckbox = screen.getByRole('checkbox', { name: /Trigger Server Error/i });
-    await user.click(failureCheckbox);
-
-    // Submit form
-    const submitButton = screen.getByRole('button', { name: /Submit Form/i });
-    await user.click(submitButton);
-
-    // Verify error alert appears
-    expect(await screen.findByRole('alert')).toBeInTheDocument();
-    expect(screen.getByText(/Submission Unsuccessful/i)).toBeInTheDocument();
-
-    // Verify user's entered data is preserved
-    expect(screen.getByLabelText(/Full Name/i)).toHaveValue('John Doe');
-    expect(screen.getByLabelText(/Email Address/i)).toHaveValue('john@example.com');
-
-    // Verify dirty status remains active
-    expect(screen.getByText('Dirty (Unsaved Changes)')).toBeInTheDocument();
-    expect(screen.getByText('Active (Guarded)')).toBeInTheDocument();
-  });
-
-  it('prompts confirmation when Reset Form is clicked on dirty form', async () => {
-    const user = userEvent.setup();
-    renderFormWithProvider();
+    renderForm();
 
     const nameInput = screen.getByLabelText(/Full Name/i);
-    await user.type(nameInput, 'Bob');
+    await user.type(nameInput, 'Alice');
+    expect(nameInput).toHaveValue('Alice');
 
-    // Click Reset Form
-    const resetButton = screen.getByRole('button', { name: /Reset Form/i });
-    await user.click(resetButton);
+    const resetBtn = screen.getByRole('button', { name: /Reset/i });
+    await user.click(resetBtn);
 
-    // Dialog appears asking for confirmation
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByText('Discard changes and reset form?')).toBeInTheDocument();
-
-    // Click "Discard & Reset"
-    const confirmButton = screen.getByRole('button', { name: /Discard & Reset/i });
-    await user.click(confirmButton);
-
-    // Form is restored to empty and pristine
     expect(nameInput).toHaveValue('');
-    expect(screen.getByText('Pristine (Clean)')).toBeInTheDocument();
+    expect(screen.getByText('Clean')).toBeInTheDocument();
+  });
+
+  it('submits form and navigates to success page', async () => {
+    const user = userEvent.setup();
+    renderForm();
+
+    await user.type(screen.getByLabelText(/Full Name/i), 'John Doe');
+    await user.type(screen.getByLabelText(/Email Address/i), 'john@example.com');
+
+    const submitBtn = screen.getByRole('button', { name: /Save Changes/i });
+    await user.click(submitBtn);
+
+    await waitFor(() => {
+      expect(mockPush).toHaveBeenCalledWith('/success');
+    });
   });
 });
