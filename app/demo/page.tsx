@@ -1,9 +1,9 @@
-import { UnsavedChangesForm } from '@/components/forms/UnsavedChangesForm';
+import { CounterDemo } from '@/components/counter/CounterDemo';
 
 export default function DemoPage() {
   return (
     <div className="py-6">
-      <UnsavedChangesForm />
+      <CounterDemo />
     </div>
   );
 }
